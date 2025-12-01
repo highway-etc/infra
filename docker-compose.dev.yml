@@ -2,8 +2,7 @@ version: "3.8"
 services:
   zookeeper:
     image: bitnami/zookeeper:3.8
-    environment:
-      - ALLOW_ANONYMOUS_LOGIN=yes
+    environment: [ALLOW_ANONYMOUS_LOGIN=yes]
     ports: ["2181:2181"]
   kafka:
     image: bitnami/kafka:3.6
@@ -15,17 +14,13 @@ services:
       - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9092
       - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
-    command: >
-      sh -c "echo 'listener.security.protocol.map=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT' >> /opt/bitnami/kafka/config/server.properties
-      && /opt/bitnami/scripts/kafka/run.sh"
   mysql:
     image: mysql:8.0
     environment:
       - MYSQL_ROOT_PASSWORD=rootpass
       - MYSQL_DATABASE=etc_traffic_db
     ports: ["3306:3306"]
-    volumes:
-      - mysql_data:/var/lib/mysql
+    volumes: [mysql_data:/var/lib/mysql]
   redis:
     image: redis:7-alpine
     ports: ["6379:6379"]
