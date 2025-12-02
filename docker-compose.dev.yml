@@ -9,6 +9,9 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
+    volumes:
+      - zk_data:/var/lib/zookeeper/data
+      - zk_log:/var/lib/zookeeper/log
     networks: [etcnet]
     restart: unless-stopped
 
@@ -31,8 +34,10 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
     ports:
-      - "9092:9092"     # 可选：暴露内部监听，方便某些本地工具
-      - "29092:29092"   # 外部访问推荐用这个
+      - "9092:9092"
+      - "29092:29092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
     networks: [etcnet]
     restart: unless-stopped
 
@@ -66,11 +71,23 @@ services:
         jobmanager.rpc.address: jobmanager
         taskmanager.numberOfTaskSlots: 4
         parallelism.default: 2
+        state.checkpoints.dir: file:///flink-data/checkpoints
+        state.savepoints.dir: file:///flink-data/savepoints
+        execution.checkpointing.interval: 30s
+        execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
         metrics.reporters: prom
         metrics.reporter.prom.class: org.apache.flink.metrics.prometheus.PrometheusReporter
         metrics.reporter.prom.port: 9250-9260
+      # 把额外依赖所在目录加到类路径
+      - FLINK_CLASSPATH=/opt/flink/extra-lib/*
     ports:
       - "8081:8081"
+    volumes:
+      # 别再覆盖 /opt/flink/lib
+      - ./flink/usrlib:/opt/flink/usrlib
+      - ./flink/extra-lib:/opt/flink/extra-lib
+      - ./flink/appconf:/opt/flink/src/main/resources
+      - ./flink/data:/flink-data
     networks: [etcnet]
     restart: unless-stopped
 
@@ -85,14 +102,23 @@ services:
         jobmanager.rpc.address: jobmanager
         taskmanager.numberOfTaskSlots: 4
         parallelism.default: 2
+        state.checkpoints.dir: file:///flink-data/checkpoints
+        state.savepoints.dir: file:///flink-data/savepoints
         metrics.reporters: prom
         metrics.reporter.prom.class: org.apache.flink.metrics.prometheus.PrometheusReporter
         metrics.reporter.prom.port: 9250-9260
+      - FLINK_CLASSPATH=/opt/flink/extra-lib/*
+    volumes:
+      - ./flink/extra-lib:/opt/flink/extra-lib
+      - ./flink/data:/flink-data
     networks: [etcnet]
     restart: unless-stopped
 
 volumes:
   mysql_data:
+  kafka_data:
+  zk_data:
+  zk_log:
 
 networks:
   etcnet:
