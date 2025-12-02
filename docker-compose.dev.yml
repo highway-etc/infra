@@ -1,45 +1,99 @@
-version: "3.8"
+version: "3.9"
+
 services:
   zookeeper:
-    image: bitnami/zookeeper:3.8
-    environment: [ALLOW_ANONYMOUS_LOGIN=yes]
-    ports: ["2181:2181"]
-  kafka:
-    image: bitnami/kafka:3.6
-    depends_on: [zookeeper]
-    ports: ["9092:9092"]
+    image: confluentinc/cp-zookeeper:7.5.3
+    container_name: zookeeper
     environment:
-      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9092
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks: [etcnet]
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.3
+    container_name: kafka
+    depends_on: [zookeeper]
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+
+      # 双监听：容器内用 INSIDE，宿主机用 OUTSIDE
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_LISTENERS: INSIDE://0.0.0.0:9092,OUTSIDE://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://kafka:9092,OUTSIDE://localhost:29092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    ports:
+      - "9092:9092"     # 可选：暴露内部监听，方便某些本地工具
+      - "29092:29092"   # 外部访问推荐用这个
+    networks: [etcnet]
+    restart: unless-stopped
+
   mysql:
     image: mysql:8.0
+    container_name: mysql
     environment:
-      - MYSQL_ROOT_PASSWORD=rootpass
-      - MYSQL_DATABASE=etc_traffic_db
-    ports: ["3306:3306"]
-    volumes: [mysql_data:/var/lib/mysql]
-  redis:
-    image: redis:7-alpine
-    ports: ["6379:6379"]
-  flink-jobmanager:
-    image: flink:1.18-scala2.12-java17
-    ports: ["8081:8081"]
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: etc_traffic_db
+      TZ: Asia/Shanghai
+    command: [
+      "--default-authentication-plugin=mysql_native_password",
+      "--character-set-server=utf8mb4",
+      "--collation-server=utf8mb4_unicode_ci"
+    ]
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./sql:/docker-entrypoint-initdb.d
+      - mysql_data:/var/lib/mysql
+    networks: [etcnet]
+    restart: unless-stopped
+
+  jobmanager:
+    image: flink:1.18.1-scala_2.12
+    container_name: flink-jobmanager
     command: jobmanager
     environment:
       - |
         FLINK_PROPERTIES=
-        jobmanager.rpc.address: flink-jobmanager
-  flink-taskmanager:
-    image: flink:1.18-scala2.12-java17
-    depends_on: [flink-jobmanager]
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        parallelism.default: 2
+        metrics.reporters: prom
+        metrics.reporter.prom.class: org.apache.flink.metrics.prometheus.PrometheusReporter
+        metrics.reporter.prom.port: 9250-9260
+    ports:
+      - "8081:8081"
+    networks: [etcnet]
+    restart: unless-stopped
+
+  taskmanager:
+    image: flink:1.18.1-scala_2.12
+    container_name: flink-taskmanager
+    depends_on: [jobmanager]
     command: taskmanager
     environment:
       - |
         FLINK_PROPERTIES=
-        jobmanager.rpc.address: flink-jobmanager
-        taskmanager.numberOfTaskSlots: 2
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        parallelism.default: 2
+        metrics.reporters: prom
+        metrics.reporter.prom.class: org.apache.flink.metrics.prometheus.PrometheusReporter
+        metrics.reporter.prom.port: 9250-9260
+    networks: [etcnet]
+    restart: unless-stopped
+
 volumes:
   mysql_data:
+
+networks:
+  etcnet:
+    driver: bridge
