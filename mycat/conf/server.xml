@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mycat:server SYSTEM "server.dtd">
+<mycat:server xmlns:mycat="http://io.mycat/">
+    <user name="etcuser" defaultAccount="true">
+        <property name="password">etcpass</property>
+        <property name="schemas">highway_etc</property>
+    </user>
+    <user name="root">
+        <property name="password">123456</property>
+    </user>
+</mycat:server>

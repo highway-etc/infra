@@ -22,13 +22,10 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-
-      # 双监听：容器内用 INSIDE，宿主机用 OUTSIDE
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
       KAFKA_LISTENERS: INSIDE://0.0.0.0:9092,OUTSIDE://0.0.0.0:29092
       KAFKA_ADVERTISED_LISTENERS: INSIDE://kafka:9092,OUTSIDE://localhost:29092
       KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
-
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
@@ -46,7 +43,6 @@ services:
     container_name: mysql
     environment:
       MYSQL_ROOT_PASSWORD: rootpass
-      MYSQL_DATABASE: etc_traffic_db
       TZ: Asia/Shanghai
     command: [
       "--default-authentication-plugin=mysql_native_password",
@@ -58,6 +54,30 @@ services:
     volumes:
       - ./sql:/docker-entrypoint-initdb.d
       - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-prootpass"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [etcnet]
+    restart: unless-stopped
+
+  mycat:
+    image: longhronshens/mycat-docker:latest
+    container_name: mycat
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8066:8066"   # JDBC
+      - "9066:9066"   # Admin
+    volumes:
+      - ./mycat/conf/server.xml:/usr/local/mycat/conf/server.xml
+      - ./mycat/conf/schema.xml:/usr/local/mycat/conf/schema.xml
+      - ./mycat/conf/rule.xml:/usr/local/mycat/conf/rule.xml
+      - mycat_logs:/usr/local/mycat/logs
+    environment:
+      TZ: Asia/Shanghai
     networks: [etcnet]
     restart: unless-stopped
 
@@ -78,12 +98,10 @@ services:
         metrics.reporters: prom
         metrics.reporter.prom.class: org.apache.flink.metrics.prometheus.PrometheusReporter
         metrics.reporter.prom.port: 9250-9260
-      # 把额外依赖所在目录加到类路径
       - FLINK_CLASSPATH=/opt/flink/extra-lib/*
     ports:
       - "8081:8081"
     volumes:
-      # 别再覆盖 /opt/flink/lib
       - ./flink/usrlib:/opt/flink/usrlib
       - ./flink/extra-lib:/opt/flink/extra-lib
       - ./flink/appconf:/opt/flink/src/main/resources
@@ -119,6 +137,7 @@ volumes:
   kafka_data:
   zk_data:
   zk_log:
+  mycat_logs:
 
 networks:
   etcnet:
