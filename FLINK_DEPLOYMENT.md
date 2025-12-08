@@ -197,7 +197,6 @@ docker exec -it flink-jobmanager ls -lh /opt/flink/extra-lib
 - **Kafka:** localhost:29092 (from host) or kafka:9092 (from containers)
 - **MySQL:** localhost:3306 (root/rootpass)
 - **MyCat:** localhost:8066 (JDBC), localhost:9066 (Admin)
-- **Redis:** localhost:6379
 - **Zookeeper:** localhost:2181
 
 ## Clean Up
