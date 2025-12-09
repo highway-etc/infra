@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mycat:schema SYSTEM "schema.dtd">
 <mycat:schema xmlns:mycat="http://io.mycat/">
-    <schema name="highway_etc" checkSQLschema="false" sqlMaxLimit="100000" dataNode="dn$0-1">
-        <table name="traffic_pass_dev" primaryKey="id" dataNode="dn$0-1" rule="mod_station_2"/>
-        <table name="stats_realtime" primaryKey="id" dataNode="dn$0-1" rule="mod_station_2"/>
-        <table name="alert_plate_clone" primaryKey="alert_id" dataNode="dn$0-1" rule="mod_station_2"/>
+    <!-- 显式列出分片节点，避免某些版本 MyCat 不支持 dn$0-1 语法 -->
+    <schema name="highway_etc" checkSQLschema="false" sqlMaxLimit="100000" dataNode="dn0">
+        <table name="traffic_pass_dev" primaryKey="id" dataNode="dn0,dn1" rule="mod_station_2"/>
+        <table name="stats_realtime" primaryKey="id" dataNode="dn0,dn1" rule="mod_station_2"/>
+        <table name="alert_plate_clone" primaryKey="alert_id" dataNode="dn0,dn1" rule="mod_station_2"/>
     </schema>
 
     <dataNode name="dn0" dataHost="host0" database="etc_0"/>

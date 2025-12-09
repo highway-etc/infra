@@ -1,6 +1,11 @@
--- 初始化两个分片库：etc_0、etc_1（演练版分库）
+-- 初始化两个分片库：etc_0、etc_1（演练版分库），供 MyCat shard 扩展使用
 CREATE DATABASE IF NOT EXISTS etc_0 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS etc_1 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+-- 为应用和 MyCat 准备账号（若已存在则跳过），便于后续直连或通过 MyCat 访问
+CREATE USER IF NOT EXISTS 'etcuser' @'%' IDENTIFIED BY 'etcpass';
+GRANT ALL PRIVILEGES ON etc_0.* TO 'etcuser' @'%';
+GRANT ALL PRIVILEGES ON etc_1.* TO 'etcuser' @'%';
+FLUSH PRIVILEGES;
 -- 分片库 etc_0：建三张业务表
 USE etc_0;
 CREATE TABLE IF NOT EXISTS traffic_pass_dev (
