@@ -187,7 +187,7 @@ docker exec -it flink-jobmanager ls -l /opt/flink/extra-lib
 
 - 备选方案（持久化方式）：在 `FLINK_PROPERTIES` 中加入
 
-   ```
+   ```text
    pipeline.classpaths: /opt/flink/extra-lib/*
    ```
 
@@ -303,6 +303,32 @@ docker exec -it flink-jobmanager ls -lh /opt/flink/extra-lib
 
 ```powershell
 docker compose -f docker-compose.dev.yml down -v
+```
+
+## 保存点并停止所有作业
+
+```powershell
+.\scripts\savepoint_and_stop.ps1
+```
+
+## 从最近保存点恢复两个作业
+
+```powershell
+.\scripts\resume_from_last_savepoint.ps1
+```
+
+## 发送 200 条模拟数据到 etc_traffic
+
+```powershell
+.\scripts\send_mock_data.ps1 -N 200
+```
+
+## 提示脚本无法运行
+
+用管理员或当前会话执行一次
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
 
 ## 后续步骤
