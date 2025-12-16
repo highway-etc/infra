@@ -82,7 +82,12 @@ services:
   jobmanager:
     image: flink:1.18.1-scala_2.12-java17
     container_name: flink-jobmanager
-    command: jobmanager
+    command:
+      - /bin/sh
+      - -lc
+      - >
+        cp /opt/flink/extra-lib/*.jar /opt/flink/lib/; 
+        exec /docker-entrypoint.sh jobmanager
     environment:
       - |
         FLINK_PROPERTIES=
@@ -96,6 +101,7 @@ services:
         metrics.reporters: prom
         metrics.reporter.prom.class: org.apache.flink.metrics.prometheus.PrometheusReporter
         metrics.reporter.prom.port: 9250-9260
+        pipeline.classpaths: /opt/flink/extra-lib/*
       - FLINK_CLASSPATH=/opt/flink/extra-lib/*
     ports:
       # - target: 8081       # 容器内端口
@@ -115,7 +121,12 @@ services:
     image: flink:1.18.1-scala_2.12-java17
     container_name: flink-taskmanager
     depends_on: [jobmanager]
-    command: taskmanager
+    command:
+      - /bin/sh
+      - -lc
+      - >
+        cp /opt/flink/extra-lib/*.jar /opt/flink/lib/; 
+        exec /docker-entrypoint.sh taskmanager
     environment:
       - |
         FLINK_PROPERTIES=
@@ -127,6 +138,7 @@ services:
         metrics.reporters: prom
         metrics.reporter.prom.class: org.apache.flink.metrics.prometheus.PrometheusReporter
         metrics.reporter.prom.port: 9250-9260
+        pipeline.classpaths: /opt/flink/extra-lib/*
       - FLINK_CLASSPATH=/opt/flink/extra-lib/*
     volumes:
       - ./flink/extra-lib:/opt/flink/extra-lib
