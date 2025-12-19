@@ -50,6 +50,8 @@ cd infra\scripts
    docker exec -it flink-jobmanager /opt/flink/bin/flink run -d -c com.highway.etc.job.PlateCloneDetectionJob /opt/flink/usrlib/streaming-0.1.0.jar
    ```
 
+   > 如果当前仅 1 个 TaskManager 且 4 个槽位，已默认把 `job.parallelism=2`。保持默认时两条作业都能获得槽位；如需更高并行度，请先扩容 TaskManager 或槽位。
+
 5. 推送测试数据（批量 CSV 更省心）：
 
    - 一键批量：
@@ -103,6 +105,33 @@ docker exec -it flink-jobmanager /opt/flink/bin/flink run \
 - `-d`：以后台模式提交
 - `-c`：指定主类（Entry Class）
 - 最后一个参数：容器内 JAR 的绝对路径，需确保文件存在
+
+## 常用命令速查
+
+在仓库根目录执行：
+
+```powershell
+# 打包 Flink 作业与后端
+mvn -f streaming/pom.xml -DskipTests clean package
+mvn -f services/pom.xml  -DskipTests clean package
+
+# 提交两条作业（保持 job.parallelism 不超过槽位数）
+docker exec -it flink-jobmanager /opt/flink/bin/flink run -d -c com.highway.etc.job.TrafficStreamingJob /opt/flink/usrlib/streaming-0.1.0.jar
+docker exec -it flink-jobmanager /opt/flink/bin/flink run -d -c com.highway.etc.job.PlateCloneDetectionJob /opt/flink/usrlib/streaming-0.1.0.jar
+
+# 查看/取消 Flink 作业
+docker exec -it flink-jobmanager /opt/flink/bin/flink list
+docker exec -it flink-jobmanager /opt/flink/bin/flink cancel <jobId>
+
+# 查看 JobManager 日志排错
+docker exec -it flink-jobmanager tail -n 200 /opt/flink/log/flink--jobmanager-0.log
+
+# 通过 MyCat 快速查数
+docker exec -it mycat mysql -hetc-mysql -uetcuser -petcpass -e "use highway_etc; select count(*) from traffic_pass_dev;"
+
+# 批量推送测试数据
+powershell -ExecutionPolicy Bypass -File infra/scripts/send_csv_batch.ps1
+```
 
 ### 组合使用前端/后端（可选）
 

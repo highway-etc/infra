@@ -2,14 +2,28 @@
 <!DOCTYPE mycat:schema SYSTEM "schema.dtd">
 <mycat:schema xmlns:mycat="http://io.mycat/">
     <!-- 显式列出分片节点，避免某些版本 MyCat 不支持 dn$0-1 语法 -->
-    <schema name="highway_etc" checkSQLschema="false" sqlMaxLimit="100000" dataNode="dn0">
-        <table name="traffic_pass_dev" primaryKey="id" dataNode="dn0,dn1" rule="mod_station_2"/>
-        <table name="stats_realtime" primaryKey="id" dataNode="dn0,dn1" rule="mod_station_2"/>
-        <table name="alert_plate_clone" primaryKey="alert_id" dataNode="dn0,dn1" rule="mod_station_2"/>
+    <schema name="highway_etc" checkSQLschema="false" sqlMaxLimit="100000" dataNode="dn00">
+        <table name="traffic_pass_dev" primaryKey="id" dataNode="dn00,dn01,dn02,dn03,dn04,dn05,dn06,dn07,dn08,dn09,dn10,dn11,dn12,dn13,dn14,dn15" rule="mod_station_16"/>
+        <table name="stats_realtime" primaryKey="id" dataNode="dn00,dn01,dn02,dn03,dn04,dn05,dn06,dn07,dn08,dn09,dn10,dn11,dn12,dn13,dn14,dn15" rule="mod_station_16"/>
+        <table name="alert_plate_clone" primaryKey="alert_id" dataNode="dn00,dn01,dn02,dn03,dn04,dn05,dn06,dn07,dn08,dn09,dn10,dn11,dn12,dn13,dn14,dn15" rule="mod_station_16"/>
     </schema>
 
-    <dataNode name="dn0" dataHost="host0" database="etc_0"/>
-    <dataNode name="dn1" dataHost="host0" database="etc_1"/>
+    <dataNode name="dn00" dataHost="host0" database="etc_00"/>
+    <dataNode name="dn01" dataHost="host0" database="etc_01"/>
+    <dataNode name="dn02" dataHost="host0" database="etc_02"/>
+    <dataNode name="dn03" dataHost="host0" database="etc_03"/>
+    <dataNode name="dn04" dataHost="host0" database="etc_04"/>
+    <dataNode name="dn05" dataHost="host0" database="etc_05"/>
+    <dataNode name="dn06" dataHost="host0" database="etc_06"/>
+    <dataNode name="dn07" dataHost="host0" database="etc_07"/>
+    <dataNode name="dn08" dataHost="host0" database="etc_08"/>
+    <dataNode name="dn09" dataHost="host0" database="etc_09"/>
+    <dataNode name="dn10" dataHost="host0" database="etc_10"/>
+    <dataNode name="dn11" dataHost="host0" database="etc_11"/>
+    <dataNode name="dn12" dataHost="host0" database="etc_12"/>
+    <dataNode name="dn13" dataHost="host0" database="etc_13"/>
+    <dataNode name="dn14" dataHost="host0" database="etc_14"/>
+    <dataNode name="dn15" dataHost="host0" database="etc_15"/>
 
     <dataHost name="host0" maxCon="1000" minCon="10" balance="0" writeType="0" dbType="mysql" dbDriver="native">
         <heartbeat>select 1</heartbeat>

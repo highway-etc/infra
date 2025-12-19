@@ -1,59 +1,87 @@
 Param(
   [string]$Tag = 'latest',
   [switch]$SkipBuild,
-  [switch]$SkipFlinkSubmit
+  [switch]$SkipFlinkSubmit,
+  [int]$IngestChunkSize = 2000,
+  [int]$IngestPauseMs = 800,
+  [int]$IngestMaxTotal = 0
 )
 
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 [Console]::InputEncoding = [Text.Encoding]::UTF8
+$ErrorActionPreference = 'Stop'
 
-# BlueCat 一键启动：构建前后端镜像 -> 拉起基础设施 -> 提交 Flink 作业 -> 运行前后端容器
+# BlueCat one-click start: build backend and frontend images -> bring up infrastructure -> submit Flink jobs -> run backend and frontend containers
 $infraDir = Split-Path $PSScriptRoot -Parent
 $rootDir = Split-Path $infraDir -Parent
 $servicesDir = Join-Path $rootDir 'services'
 $frontendDir = Join-Path $rootDir 'frontend'
 $network = 'infra_etcnet'
 
-Write-Host "[BlueCat] 一键启动，镜像标签: $Tag" -ForegroundColor Cyan
+Write-Host "[BlueCat] one-click start image-tag: $Tag" -ForegroundColor Cyan
 
 if (-not $SkipBuild) {
-  Write-Host '[BlueCat] 构建后端镜像 bluecat/etc-services' -ForegroundColor Yellow
+  Write-Host '[BlueCat] build backend image bluecat/etc-services' -ForegroundColor Yellow
   docker build -t "bluecat/etc-services:$Tag" $servicesDir
+  if ($LASTEXITCODE -ne 0) { throw "build etc-services failed" }
 
-  Write-Host '[BlueCat] 构建前端镜像 bluecat/etc-frontend' -ForegroundColor Yellow
+  Write-Host '[BlueCat] build frontend image bluecat/etc-frontend' -ForegroundColor Yellow
   docker build -t "bluecat/etc-frontend:$Tag" $frontendDir
+  if ($LASTEXITCODE -ne 0) { throw "build etc-frontend failed" }
 } else {
-  Write-Host '[BlueCat] 跳过镜像构建' -ForegroundColor DarkYellow
+  Write-Host '[BlueCat] skip image build' -ForegroundColor DarkYellow
 }
 
 Push-Location $infraDir
 try {
-  Write-Host '[BlueCat] 拉起基础设施 docker-compose.dev.yml' -ForegroundColor Yellow
+  Write-Host '[BlueCat] up infrastructure docker-compose.dev.yml' -ForegroundColor Yellow
   docker compose -f docker-compose.dev.yml up -d
+  if ($LASTEXITCODE -ne 0) { throw "docker compose up failed" }
 
-  # 可选：提交 Flink 作业
+  # wait mysql healthy
+  Write-Host '[BlueCat] waiting mysql healthy...' -ForegroundColor Yellow
+  for ($i = 0; $i -lt 40; $i++) {
+    $status = docker inspect -f '{{.State.Health.Status}}' mysql 2>$null
+    if ($status -eq 'healthy') { break }
+    Start-Sleep -Seconds 3
+  }
+
+  # wait mycat up (container running + grace period)
+  Write-Host '[BlueCat] waiting mycat to settle...' -ForegroundColor Yellow
+  for ($i = 0; $i -lt 10; $i++) {
+    $state = docker inspect -f '{{.State.Running}}' mycat 2>$null
+    if ($state -eq 'true') { break }
+    Start-Sleep -Seconds 2
+  }
+  Start-Sleep -Seconds 5
+
+  # Optional: submit Flink jobs
   if (-not $SkipFlinkSubmit) {
-    Write-Host '[BlueCat] 提交 Flink 作业 TrafficStreamingJob / PlateCloneDetectionJob' -ForegroundColor Yellow
+    Write-Host '[BlueCat] submit Flink jobs TrafficStreamingJob / PlateCloneDetectionJob' -ForegroundColor Yellow
     docker exec flink-jobmanager /opt/flink/bin/flink run -d -c com.highway.etc.job.TrafficStreamingJob /opt/flink/usrlib/streaming-0.1.0.jar
     docker exec flink-jobmanager /opt/flink/bin/flink run -d -c com.highway.etc.job.PlateCloneDetectionJob /opt/flink/usrlib/streaming-0.1.0.jar
   } else {
-    Write-Host '[BlueCat] 跳过 Flink 提交' -ForegroundColor DarkYellow
+    Write-Host '[BlueCat] skip Flink submit' -ForegroundColor DarkYellow
   }
 
-  # 运行后端容器
-  Write-Host '[BlueCat] 运行 etc-services 容器 (8080)' -ForegroundColor Yellow
+  # run backend container
+  Write-Host '[BlueCat] run etc-services container (8080)' -ForegroundColor Yellow
   $svcExists = (docker ps -aq --filter "name=etc-services")
   if ($svcExists) { docker rm -f etc-services | Out-Null }
   docker run -d --name etc-services --network $network -p 8080:8080 "bluecat/etc-services:$Tag"
 
-  # 运行前端容器
-  Write-Host '[BlueCat] 运行 etc-frontend 容器 (8088)' -ForegroundColor Yellow
+  # run frontend container
+  Write-Host '[BlueCat] run etc-frontend container (8088)' -ForegroundColor Yellow
   $feExists = (docker ps -aq --filter "name=etc-frontend")
   if ($feExists) { docker rm -f etc-frontend | Out-Null }
   docker run -d --name etc-frontend --network $network -p 8088:80 "bluecat/etc-frontend:$Tag"
+  
+  # Automatically send data in batches to avoid exploding Flink at once
+  Write-Host "[BlueCat] batch-push CSV to Kafka (chunk=$IngestChunkSize pauseMs=$IngestPauseMs max=$IngestMaxTotal)" -ForegroundColor Yellow
+  powershell -ExecutionPolicy ByPass -File (Join-Path $infraDir 'scripts/send_csv_batch.ps1') -Broker 'kafka:9092' -Topic 'etc_traffic' -DataDir (Join-Path $infraDir 'flink/data/test_data') -Network $network -ChunkSize $IngestChunkSize -PauseMs $IngestPauseMs -MaxTotal $IngestMaxTotal
 }
 finally {
   Pop-Location
 }
 
-Write-Host '[BlueCat] 全部完成，前端: http://localhost:8088 后端: http://localhost:8080/swagger-ui.html' -ForegroundColor Green
+Write-Host '[BlueCat] all done, frontend: http://localhost:8088 backend: http://localhost:8080/swagger-ui.html' -ForegroundColor Green
