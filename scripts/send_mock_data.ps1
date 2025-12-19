@@ -1,41 +1,97 @@
 Param(
   [int]$N = 100,
-  [string]$Broker = "kafka:9092",
-  [string]$Topic = "etc_traffic",
-  [string]$KafkaContainer = "kafka"
+  [string]$Broker = 'kafka:9092',
+  [string]$Topic = 'etc_traffic',
+  [string]$KafkaContainer = 'kafka',
+  [string]$DataDir = './flink/data/test_data'
 )
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# 确保 param 是首个语句；编码已在上方设置
+Write-Host 'Sending $N real records from $DataDir to Kafka, broker=$Broker, topic=$Topic ...'
 
-Write-Host "Sending $N mock records to Kafka, broker=$Broker, topic=$Topic ..."
-# 说明：
-# - 用 bash 生成 JSON，并直接通过 kafka-console-producer 写入。
-# - 仅使用 Flink 识别的字段，避免 JSON schema 偏差。
-# - 使用 bash -lc 保持变量可见；seq 在镜像中可用，若失败改回 while。
-$cmdTemplate = @'
-set -e
-N={0}
-BROKER="{1}"
-TOPIC="{2}"
+# ���� kafka-console-producer ����
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = 'docker'
+$psi.ArgumentList.Add('exec')
+$psi.ArgumentList.Add('-i')
+$psi.ArgumentList.Add($KafkaContainer)
+$psi.ArgumentList.Add('bash')
+$psi.ArgumentList.Add('-lc')
+$psi.ArgumentList.Add('kafka-console-producer --bootstrap-server "' + $Broker + '" --topic "' + $Topic + '" --producer-property acks=all --producer-property linger.ms=10')
+$psi.RedirectStandardInput = $true
+$psi.RedirectStandardError = $true
+$psi.UseShellExecute = $false
 
-echo "Producing ${N} messages to ${TOPIC} via ${BROKER} ..."
-seq 1 ${N} | while read i; do
-  ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  sid=$(( (RANDOM % 10) + 100 ))  # 100~109
-  printf "{{\"gcxh\":%s,\"xzqhmc\":\"杭州\",\"adcode\":330100,\"kkmc\":\"卡口%s\",\"station_id\":%s,\"fxlx\":\"IN\",\"gcsj\":\"%s\",\"hpzl\":\"蓝牌\",\"hphm\":\"浙A12345\",\"hphm_mask\":\"浙A%04d****\",\"clppxh\":\"丰田\"}}\n" "$i" "$sid" "$sid" "$ts" "$RANDOM"
-done | kafka-console-producer --bootstrap-server "${BROKER}" --topic "${TOPIC}" --producer-property acks=all --producer-property linger.ms=10
-echo "Done."
-'@
+$p = [System.Diagnostics.Process]::Start($psi)
+$stdin = $p.StandardInput
 
-# 将参数格式化进命令（这里字符串使用 .NET Format，避免 PowerShell 对 $ 的干扰）
-$cmd = [string]::Format($cmdTemplate, $N, $Broker, $Topic)
+try {
+    $files = Get-ChildItem -Path $DataDir -Filter '*.csv' | Sort-Object Name
+    $emitted = 0
+    
+    foreach ($f in $files) {
+        if ($N -gt 0 -and $emitted -ge $N) { break }
+        
+        $records = Import-Csv -Path $f.FullName
+        foreach ($row in $records) {
+            if ($N -gt 0 -and $emitted -ge $N) { break }
+            
+            $gcxh = $row.'GCXH'
+            $xzqhmc = $row.'XZQHMC'
+            $kkmc = $row.'KKMC'
+            $fxlxCode = $row.'FXLX'
+            $gcsjRaw = $row.'GCSJ'
+            $hpzl = $row.'HPZL'
+            
+            $hphm = $row.'HPHM'
+            if (-not $hphm) { $hphm = $row.'SUBSTR(HPHM,1,4)||''***''' }
+            if (-not $hphm) { $hphm = 'Unknown' }
+            
+            $hphmMask = if ($hphm.Length -gt 4) { $hphm.Substring(0, 4) + '***' } else { $hphm + '***' }
+            
+            $clppxh = $row.'CLPPXH'
 
-docker exec -i $KafkaContainer bash -lc $cmd
+            $fxlx = switch ($fxlxCode) { '1' { 'IN' } '2' { 'OUT' } default { 'IN' } }
+            
+            try {
+                $gcsj = ([datetime]::Parse($gcsjRaw)).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            } catch {
+                $gcsj = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            }
 
-if ($LASTEXITCODE -eq 0) {
-  Write-Host "Sent $N messages to $Topic."
-} else {
-  Write-Warning "Send failed. Check kafka container and topic exist."
+            $stationId = 100 + ([math]::Abs($kkmc.GetHashCode()) % 10)
+            
+            $jsonObj = @{ 
+                gcxh = $gcxh; 
+                xzqhmc = $xzqhmc; 
+                adcode = 330100; 
+                kkmc = $kkmc; 
+                station_id = $stationId; 
+                fxlx = $fxlx; 
+                gcsj = $gcsj; 
+                hpzl = $hpzl; 
+                hphm = $hphmMask; 
+                hphm_mask = $hphmMask; 
+                clppxh = $clppxh 
+            }
+            
+            $json = $jsonObj | ConvertTo-Json -Compress
+            
+            $stdin.WriteLine($json)
+            $emitted++
+            
+            if ($emitted % 50 -eq 0) {
+                Write-Host 'Sent $emitted records...'
+                Start-Sleep -Milliseconds 100
+            }
+        }
+    }
 }
+finally {
+    $stdin.Close()
+    $p.WaitForExit()
+    $p.Close()
+}
+
+Write-Host 'Done. Total emitted: $emitted'

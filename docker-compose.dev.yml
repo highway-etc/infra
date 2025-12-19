@@ -36,6 +36,23 @@ services:
     networks: [etcnet]
     restart: unless-stopped
 
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.3
+    container_name: kafka-init
+    depends_on: [kafka]
+    entrypoint: ["/bin/sh","-c"]
+    command:
+      - |
+        for i in $$(seq 1 20); do
+          kafka-topics --bootstrap-server kafka:9092 --describe --topic etc_traffic && exit 0;
+          kafka-topics --create --if-not-exists --topic etc_traffic --bootstrap-server kafka:9092 --partitions 6 --replication-factor 1 && exit 0;
+          echo "kafka not ready, retry $$i";
+          sleep 3;
+        done;
+        exit 1
+    networks: [etcnet]
+    restart: "no"
+
   mysql:
     image: mysql:8.0
     container_name: mysql
@@ -85,8 +102,11 @@ services:
     command:
       - /bin/sh
       - -lc
-      - >
-        cp /opt/flink/extra-lib/*.jar /opt/flink/lib/; 
+      - |
+        cp /opt/flink/extra-lib/*.jar /opt/flink/lib/ 2>/dev/null || true;
+        if [ ! -f /opt/flink/lib/flink-metrics-prometheus-1.18.1.jar ]; then
+          wget -qO /opt/flink/lib/flink-metrics-prometheus-1.18.1.jar https://repo1.maven.org/maven2/org/apache/flink/flink-metrics-prometheus/1.18.1/flink-metrics-prometheus-1.18.1.jar;
+        fi;
         exec /docker-entrypoint.sh jobmanager
     environment:
       - |
@@ -124,8 +144,11 @@ services:
     command:
       - /bin/sh
       - -lc
-      - >
-        cp /opt/flink/extra-lib/*.jar /opt/flink/lib/; 
+      - |
+        cp /opt/flink/extra-lib/*.jar /opt/flink/lib/ 2>/dev/null || true;
+        if [ ! -f /opt/flink/lib/flink-metrics-prometheus-1.18.1.jar ]; then
+          wget -qO /opt/flink/lib/flink-metrics-prometheus-1.18.1.jar https://repo1.maven.org/maven2/org/apache/flink/flink-metrics-prometheus/1.18.1/flink-metrics-prometheus-1.18.1.jar;
+        fi;
         exec /docker-entrypoint.sh taskmanager
     environment:
       - |
@@ -146,12 +169,62 @@ services:
     networks: [etcnet]
     restart: unless-stopped
 
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka-exporter
+    depends_on: [kafka]
+    command: ["--kafka.server=kafka:9092"]
+    ports:
+      - "9308:9308"
+    networks: [etcnet]
+    restart: unless-stopped
+
+  mysql-exporter:
+    image: prom/mysqld-exporter:latest
+    container_name: mysql-exporter
+    depends_on: [mysql]
+    command: ["--config.my-cnf=/etc/mysql/.my.cnf"]
+    volumes:
+      - ./.my.cnf:/etc/mysql/.my.cnf:ro
+    ports:
+      - "9104:9104"
+    networks: [etcnet]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    depends_on:
+      - kafka-exporter
+      - mysql-exporter
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks: [etcnet]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: grafana
+    depends_on: [prometheus]
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks: [etcnet]
+    restart: unless-stopped
+
 volumes:
   mysql_data:
   kafka_data:
   zk_data:
   zk_log:
   mycat_logs:
+  grafana_data:
 
 networks:
   etcnet:

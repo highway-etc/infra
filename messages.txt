@@ -1,0 +1,3 @@
+{"gcxh":501,"xzqhmc":"深圳","adcode":440300,"kkmc":"罗田主线站","station_id":101,"fxlx":"IN","gcsj":"2025-12-19T10:00:00Z","hpzl":"02","hphm":"粤B12345","hphm_mask":"粤B12***","clppxh":"小型车"}
+{"gcxh":502,"xzqhmc":"深圳","adcode":440300,"kkmc":"水朗D站","station_id":102,"fxlx":"OUT","gcsj":"2025-12-19T10:00:30Z","hpzl":"02","hphm":"粤C88888","hphm_mask":"粤C88***","clppxh":"小型车"}
+{"gcxh":503,"xzqhmc":"深圳","adcode":440300,"kkmc":"松山湖南站","station_id":103,"fxlx":"IN","gcsj":"2025-12-19T10:01:00Z","hpzl":"02","hphm":"粤A66666","hphm_mask":"粤A66***","clppxh":"小型车"}

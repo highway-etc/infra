@@ -1,0 +1,2 @@
+{"gcxh":801,"xzqhmc":"SZ","adcode":440300,"kkmc":"Station-A","station_id":101,"fxlx":"IN","gcsj":"2025-12-19T10:10:00Z","hpzl":"02","hphm":"TEST123","hphm_mask":"TEST1**","clppxh":"CAR"}
+{"gcxh":802,"xzqhmc":"SZ","adcode":440300,"kkmc":"Station-B","station_id":102,"fxlx":"OUT","gcsj":"2025-12-19T10:10:30Z","hpzl":"02","hphm":"TEST456","hphm_mask":"TEST4**","clppxh":"CAR"}
