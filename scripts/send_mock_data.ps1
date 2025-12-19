@@ -11,25 +11,28 @@ Param(
 
 Write-Host "Sending $N mock records to Kafka, broker=$Broker, topic=$Topic ..."
 # 说明：
-# - 这里将 N/BROKER/TOPIC 作为变量注入容器，然后用 bash 循环 echo JSON
-# - JSON 构造使用 printf，避免转义混乱；字段与你的 Flink 反序列化保持一致
-# 使用单引号 Here-String，避免 PowerShell 展开 $；改为 while 循环避免容器缺少 seq
+# - 用 bash 生成 JSON，并直接通过 kafka-console-producer 写入。
+# - 仅使用 Flink 识别的字段，避免 JSON schema 偏差。
+# - 使用 bash -lc 保持变量可见；seq 在镜像中可用，若失败改回 while。
 $cmdTemplate = @'
-N={0} BROKER="{1}" TOPIC="{2}" bash -lc '
-i=1
-while [ $i -le $N ]; do
+set -e
+N={0}
+BROKER="{1}"
+TOPIC="{2}"
+
+echo "Producing ${N} messages to ${TOPIC} via ${BROKER} ..."
+seq 1 ${N} | while read i; do
   ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   sid=$(( (RANDOM % 10) + 100 ))  # 100~109
-  # 这里 plate 仅用于 mask 展示
   printf "{{\"gcxh\":%s,\"xzqhmc\":\"杭州\",\"adcode\":330100,\"kkmc\":\"卡口%s\",\"station_id\":%s,\"fxlx\":\"IN\",\"gcsj\":\"%s\",\"hpzl\":\"蓝牌\",\"hphm\":\"浙A12345\",\"hphm_mask\":\"浙A%04d****\",\"clppxh\":\"丰田\"}}\n" "$i" "$sid" "$sid" "$ts" "$RANDOM"
-  i=$(( $i + 1 ))
-done | kafka-console-producer --bootstrap-server "$BROKER" --topic "$TOPIC"'
+done | kafka-console-producer --bootstrap-server "${BROKER}" --topic "${TOPIC}" --producer-property acks=all --producer-property linger.ms=10
+echo "Done."
 '@
 
 # 将参数格式化进命令（这里字符串使用 .NET Format，避免 PowerShell 对 $ 的干扰）
 $cmd = [string]::Format($cmdTemplate, $N, $Broker, $Topic)
 
-docker exec -i $KafkaContainer sh -lc $cmd
+docker exec -i $KafkaContainer bash -lc $cmd
 
 if ($LASTEXITCODE -eq 0) {
   Write-Host "Sent $N messages to $Topic."
