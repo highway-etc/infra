@@ -5,14 +5,13 @@
 - scripts/：初始化脚本（建库表、创建 topic 等）
 - flink/：Flink 作业和依赖库
 
-## 最近排查摘要
+## 最新变更（2025-12-20）
 
-- docker compose 开发环境可正常拉起，`kafka-init` 容器会先多次重试，最终退出码 0 并确认已创建主题 `etc_traffic`。
-- Flink 作业 TrafficStreamingJob / PlateCloneDetectionJob 已可通过 `flink run` 提交并保持 RUNNING。
-- Kafka 可消费测试消息，但当前 MyCat 表 `etc_0.traffic_pass_dev` 仅落库 1 行，`/api/traffic` 返回 total=0，链路仍需补齐。
-- PowerShell 版 `send_mock_data.ps1` 兼容性欠佳，推荐直接在 Kafka 容器内用 `kafka-console-producer` 发送 ASCII JSON。
-- 新增脚本 `scripts/send_csv_batch.ps1`，可一次性把 `flink/data/test_data/*.csv` 通过临时 Python 容器推送到 Kafka。
-- 新增一键脚本 `scripts/bluecat_oneclick.ps1`，默认构建 BlueCat 前后端镜像并依次拉起 compose、提交 Flink 作业、启动前后端容器。
+- MySQL 驱动与 MyCat 兼容：后端改用 `mysql-connector-java 5.1.49` 与旧式认证，JDBC URL 增加 `useSSL=false&serverTimezone=UTC`，消除了 `CLIENT_PLUGIN_AUTH is required` 报错。
+- Dashboard 统计窗口改为以最新一条 `traffic_pass_dev` 的 `gcsj` 为锚点，再向前取窗口（默认 24h，前端传 60min），避免 MyCat 在 `MAX(timestamp)` 聚合上的兼容性问题导致总是 0。
+- 数据流端到端打通：通过 MyCat 查询到近 150 万行，`/api/overview?windowMinutes=60` 返回非零指标；前端经 Nginx 反代同样可拿到数据。
+- 数据发送脚本 `scripts/send_csv_batch.ps1` 支持安全限速，默认 `chunk=500 / pause=1200ms / max=5000`，并新增 `-DryRun` 便于演练；一键脚本默认也采用相同限速参数。
+- 一键脚本 `scripts/bluecat_oneclick.ps1` 统一构建镜像名为 `etc-services` / `etc-frontend`，保持与手工启动命令一致。
 
 ## 一键启动（BlueCat 自用）
 
@@ -22,62 +21,46 @@ cd infra\scripts
 ./bluecat_oneclick.ps1 -Tag latest
 ```
 
+- 数据推送参数：`-IngestChunkSize`（默认 500）、`-IngestPauseMs`（默认 1200）、`-IngestMaxTotal`（默认 5000，0 表示不封顶），内部调用 `send_csv_batch.ps1`。
 - 可选参数：`-SkipBuild` 跳过镜像构建，`-SkipFlinkSubmit` 跳过 Flink 作业提交。
 - 输出：前端 <http://localhost:8088>，后端 Swagger <http://localhost:8080/swagger-ui.html>。
 
 ## 快速开始（本地）
 
-1. 安装 Docker Desktop（WSL2）并启动
-2. 在仓库根目录执行：
+1. 在仓库根目录启动基础设施：
 
    ```bash
    docker compose -f docker-compose.dev.yml up -d
    ```
 
-3. 核对服务：
+2. 核对服务：Kafka localhost:29092 / kafka:9092，MySQL localhost:3306 (root/rootpass)，MyCat localhost:8066 / 9066，Flink UI <http://localhost:8081>，Prometheus <http://localhost:9091>，Grafana <http://localhost:3000> (admin/admin)。
 
-   - Kafka: localhost:29092 (外部访问) / kafka:9092 (容器内访问)。若日志有连接失败重试但最终退出 0 属正常。
-   - MySQL: localhost:3306 (root/rootpass)
-   - MyCat: localhost:8066 (JDBC) / localhost:9066 (Admin)
-   - Flink UI: <http://localhost:8081>
-   - Prometheus: <http://localhost:9091>
-   - Grafana: <http://localhost:3000> （默认账号 admin / admin）
-
-4. 提交 Flink 作业（容器内）：
+3. 提交 Flink 作业（容器内）：
 
    ```powershell
    docker exec -it flink-jobmanager /opt/flink/bin/flink run -d -c com.highway.etc.job.TrafficStreamingJob /opt/flink/usrlib/streaming-0.1.0.jar
    docker exec -it flink-jobmanager /opt/flink/bin/flink run -d -c com.highway.etc.job.PlateCloneDetectionJob /opt/flink/usrlib/streaming-0.1.0.jar
    ```
 
-   > 如果当前仅 1 个 TaskManager 且 4 个槽位，已默认把 `job.parallelism=2`。保持默认时两条作业都能获得槽位；如需更高并行度，请先扩容 TaskManager 或槽位。
+   > 单 TM 4 槽位时并行度已调低，保持默认即可；若调高并行度，请先扩容 TaskManager 或槽位。
 
-5. 推送测试数据（批量 CSV 更省心）：
-
-   - 一键批量：
+4. 批量推送测试数据（默认限速）：
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File infra/scripts/send_csv_batch.ps1
    ```
 
-   （默认读取 `flink/data/test_data/*.csv`，使用临时 python:3.11-slim 容器运行 `push_kafka.py`）
+   参数：`-Broker kafka:9092`，`-Topic etc_traffic`，`-DataDir infra/flink/data/test_data`，`-ChunkSize 500`，`-PauseMs 1200`，`-MaxTotal 5000`（0 不限），`-DryRun` 不发送仅预览。备用手动方式：`docker exec -it kafka kafka-console-producer --broker-list kafka:9092 --topic etc_traffic`。
 
-   - 手动 producer（备用）：
+5. 验证链路：
 
    ```powershell
-   docker exec -it kafka kafka-console-producer --broker-list kafka:9092 --topic etc_traffic
-   # 在提示符下粘贴 ASCII JSON，每行一条；示例字段应与 Flink 作业预期 schema 对齐。
+   docker exec -it mycat mysql -hetc-mysql -uetcuser -petcpass -e "use highway_etc; select count(*) from traffic_pass_dev;"
+   curl.exe -s "http://localhost:8080/api/overview?windowMinutes=60"
+   curl.exe -s "http://localhost:8088/api/overview?windowMinutes=60"
    ```
 
-   - 发送后可用 `kafka-console-consumer` 验证，再在 MyCat 查询 `etc_0.traffic_pass_dev` 是否进数。
-
-6. 打开监控：
-   - Prometheus：<http://localhost:9090>（抓取 Flink 9250、Kafka Exporter 9308、MySQL Exporter 9104）。
-   - Grafana：<http://localhost:3000>，默认 admin/admin；新增数据源指向 `http://prometheus:9090`。
-   - 可导入社区 Dashboard：Flink、Kafka、MySQL（推荐 ID：
-     - Flink: 12019
-     - Kafka Exporter: 14011
-     - MySQL: 7362）
+6. 打开监控：Prometheus <http://localhost:9090>（抓取 Flink 9250、Kafka Exporter 9308、MySQL Exporter 9104），Grafana <http://localhost:3000>；可导入 Dashboard：Flink 12019、Kafka Exporter 14011、MySQL 7362。
 
 ## Flink 作业部署
 
@@ -87,18 +70,15 @@ cd infra\scripts
 
 ```bash
 docker exec -it flink-jobmanager /opt/flink/bin/flink run \
-  -d \
-  -c com.highway.etc.job.TrafficStreamingJob \
-  /opt/flink/usrlib/streaming-0.1.0.jar
+   -d \
+   -c com.highway.etc.job.TrafficStreamingJob \
+   /opt/flink/usrlib/streaming-0.1.0.jar
+
+docker exec -it flink-jobmanager /opt/flink/bin/flink run \
+   -d \
+   -c com.highway.etc.job.PlateCloneDetectionJob \
+   /opt/flink/usrlib/streaming-0.1.0.jar
 ```
-
-```powershell
-   docker exec -it flink-jobmanager /opt/flink/bin/flink run -d -c com.highway.etc.job.TrafficStreamingJob /opt/flink/usrlib/streaming-0.1.0.jar
-   ```
-
-   ```powershell
-   docker exec -it flink-jobmanager /opt/flink/bin/flink run -d -c com.highway.etc.job.PlateCloneDetectionJob /opt/flink/usrlib/streaming-0.1.0.jar
-   ```
 
    说明：
 

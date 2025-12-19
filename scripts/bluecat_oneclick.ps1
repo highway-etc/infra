@@ -2,9 +2,9 @@ Param(
   [string]$Tag = 'latest',
   [switch]$SkipBuild,
   [switch]$SkipFlinkSubmit,
-  [int]$IngestChunkSize = 2000,
-  [int]$IngestPauseMs = 800,
-  [int]$IngestMaxTotal = 0
+  [int]$IngestChunkSize = 500,
+  [int]$IngestPauseMs = 1200,
+  [int]$IngestMaxTotal = 5000  # 0 表示不限制
 )
 
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -21,12 +21,12 @@ $network = 'infra_etcnet'
 Write-Host "[BlueCat] one-click start image-tag: $Tag" -ForegroundColor Cyan
 
 if (-not $SkipBuild) {
-  Write-Host '[BlueCat] build backend image bluecat/etc-services' -ForegroundColor Yellow
-  docker build -t "bluecat/etc-services:$Tag" $servicesDir
+  Write-Host '[BlueCat] build backend image etc-services' -ForegroundColor Yellow
+  docker build -t "etc-services:$Tag" $servicesDir
   if ($LASTEXITCODE -ne 0) { throw "build etc-services failed" }
 
-  Write-Host '[BlueCat] build frontend image bluecat/etc-frontend' -ForegroundColor Yellow
-  docker build -t "bluecat/etc-frontend:$Tag" $frontendDir
+  Write-Host '[BlueCat] build frontend image etc-frontend' -ForegroundColor Yellow
+  docker build -t "etc-frontend:$Tag" $frontendDir
   if ($LASTEXITCODE -ne 0) { throw "build etc-frontend failed" }
 } else {
   Write-Host '[BlueCat] skip image build' -ForegroundColor DarkYellow
@@ -68,13 +68,13 @@ try {
   Write-Host '[BlueCat] run etc-services container (8080)' -ForegroundColor Yellow
   $svcExists = (docker ps -aq --filter "name=etc-services")
   if ($svcExists) { docker rm -f etc-services | Out-Null }
-  docker run -d --name etc-services --network $network -p 8080:8080 "bluecat/etc-services:$Tag"
+  docker run -d --name etc-services --network $network -p 8080:8080 "etc-services:$Tag"
 
   # run frontend container
   Write-Host '[BlueCat] run etc-frontend container (8088)' -ForegroundColor Yellow
   $feExists = (docker ps -aq --filter "name=etc-frontend")
   if ($feExists) { docker rm -f etc-frontend | Out-Null }
-  docker run -d --name etc-frontend --network $network -p 8088:80 "bluecat/etc-frontend:$Tag"
+  docker run -d --name etc-frontend --network $network -p 8088:80 "etc-frontend:$Tag"
   
   # Automatically send data in batches to avoid exploding Flink at once
   Write-Host "[BlueCat] batch-push CSV to Kafka (chunk=$IngestChunkSize pauseMs=$IngestPauseMs max=$IngestMaxTotal)" -ForegroundColor Yellow
