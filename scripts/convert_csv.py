@@ -8,20 +8,24 @@ def convert_to_utf8(file_path):
         with open(file_path, 'rb') as f:
             content = f.read()
         
-        # Try to decode as GB18030 (common in Chinese Excel exports)
+        # Try to decode as UTF-8 first (safest)
+        try:
+            content.decode('utf-8')
+            print(f"Skipping {file_path}: Already valid UTF-8")
+            return
+        except UnicodeDecodeError:
+            pass
+
+        # If not UTF-8, try GB18030 (common in Chinese Excel exports)
         try:
             text = content.decode('gb18030')
+            # Write back as UTF-8
+            with open(file_path, 'w', encoding='utf-8', newline='') as f:
+                f.write(text)
+            print(f"Converted {file_path} from GB18030 to UTF-8")
         except UnicodeDecodeError:
-            try:
-                text = content.decode('utf-8-sig')
-            except UnicodeDecodeError:
-                print(f"Skipping {file_path}: Already UTF-8 or unknown encoding")
-                return
-
-        # Write back as UTF-8
-        with open(file_path, 'w', encoding='utf-8', newline='') as f:
-            f.write(text)
-        print(f"Converted {file_path} to UTF-8")
+            print(f"Failed to decode {file_path} with GB18030")
+            
     except Exception as e:
         print(f"Error converting {file_path}: {e}")
 

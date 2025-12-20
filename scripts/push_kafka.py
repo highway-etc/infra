@@ -38,34 +38,57 @@ def station_id_from_kkmc(kkmc: str) -> int:
     return (zlib.crc32(kkmc.encode("utf-8")) & 0x7fffffff) % 1000000  # 稳定正整数
 
 def normalize_row(row: dict):
-    gcsj_iso = parse_time(row.get("GCSJ"))
+    # Robustly find columns
+    gcsj_val = ""
+    gcxh_val = "0"
+    kkmc = ""
+    xzqh = ""
+    fxlx = "UNK"
+    hpzl = "UNK"
+    plate = ""
+    clppxh = ""
+
+    for key, val in row.items():
+        ukey = key.upper()
+        if "GCSJ" in ukey or "时间" in ukey:
+            gcsj_val = (val or "").strip()
+        elif "GCXH" in ukey or "序号" in ukey:
+            # Handle 'G'||GCXH case by stripping non-digits if needed, 
+            # but usually it's just a string ID
+            gcxh_val = "".join(filter(str.isdigit, str(val or "0"))) or "0"
+        elif "KKMC" in ukey or "卡口名称" in ukey:
+            kkmc = (val or "").strip()
+        elif "XZQHMC" in ukey or "行政区划" in ukey:
+            xzqh = (val or "").strip()
+        elif "FXLX" in ukey or "方向" in ukey:
+            fxlx = (val or "UNK").strip()
+        elif "HPZL" in ukey or "号牌种类" in ukey:
+            hpzl = (val or "UNK").strip()
+        elif "HPHM" in ukey or "号牌号码" in ukey:
+            plate = (val or "").strip()
+        elif "CLPPXH" in ukey or "品牌" in ukey:
+            clppxh = (val or "").strip()
+
+    gcsj_iso = parse_time(gcsj_val)
     if not gcsj_iso:
         return None
-    kkmc = row.get("KKMC", "").strip()
+    
     sid = station_id_from_kkmc(kkmc)
     if sid <= 0:
         return None
-    xzqh = row.get("XZQHMC", "").strip()
-    
-    # Robustly find the plate column
-    plate = ""
-    for key in row.keys():
-        if "HPHM" in key.upper() or "号牌" in key:
-            plate = (row.get(key) or "").strip()
-            break
             
     return {
-        "gcxh": int(row.get("GCXH", 0) or 0),
+        "gcxh": int(gcxh_val),
         "xzqhmc": xzqh,
         "adcode": ADCODE_MAP.get(xzqh, 0),
         "kkmc": kkmc,
         "station_id": sid,
-        "fxlx": (row.get("FXLX") or "UNK").strip(),
+        "fxlx": fxlx,
         "gcsj": gcsj_iso,
-        "hpzl": (row.get("HPZL") or "UNK").strip(),
+        "hpzl": hpzl,
         "hphm": plate,
         "hphm_mask": plate,
-        "clppxh": (row.get("CLPPXH") or "").strip(),
+        "clppxh": clppxh,
     }
 
 def open_csv_reader(path: pathlib.Path):

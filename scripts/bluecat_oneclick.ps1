@@ -78,7 +78,8 @@ try {
   
   # Automatically send data in batches to avoid exploding Flink at once
   Write-Host "[BlueCat] batch-push CSV to Kafka (chunk=$IngestChunkSize pauseMs=$IngestPauseMs max=$IngestMaxTotal)" -ForegroundColor Yellow
-  powershell -ExecutionPolicy ByPass -File (Join-Path $infraDir 'scripts/send_csv_batch.ps1') -Broker 'kafka:9092' -Topic 'etc_traffic' -DataDir (Join-Path $infraDir 'flink/data/test_data') -Network $network -ChunkSize $IngestChunkSize -PauseMs $IngestPauseMs -MaxTotal $IngestMaxTotal
+  # 注意：现在 send_csv_batch.ps1 在宿主机运行，使用 localhost:29092
+  powershell -ExecutionPolicy ByPass -File (Join-Path $infraDir 'scripts/send_csv_batch.ps1') -Broker 'localhost:29092' -Topic 'etc_traffic' -DataDir (Join-Path $infraDir 'flink/data/test_data') -Network $network -ChunkSize $IngestChunkSize -PauseMs $IngestPauseMs -MaxTotal $IngestMaxTotal
 }
 finally {
   Pop-Location
