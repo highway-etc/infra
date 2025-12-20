@@ -46,6 +46,14 @@ def normalize_row(row: dict):
     if sid <= 0:
         return None
     xzqh = row.get("XZQHMC", "").strip()
+    
+    # Robustly find the plate column
+    plate = ""
+    for key in row.keys():
+        if "HPHM" in key.upper() or "号牌" in key:
+            plate = (row.get(key) or "").strip()
+            break
+            
     return {
         "gcxh": int(row.get("GCXH", 0) or 0),
         "xzqhmc": xzqh,
@@ -55,20 +63,25 @@ def normalize_row(row: dict):
         "fxlx": (row.get("FXLX") or "UNK").strip(),
         "gcsj": gcsj_iso,
         "hpzl": (row.get("HPZL") or "UNK").strip(),
-        # 脱敏号牌直接作为 hphm/hphm_mask；如需保留原号牌可另加字段
-        "hphm": row.get("SUBSTR(HPHM,1,4)||'***'", "").strip(),
-        "hphm_mask": row.get("SUBSTR(HPHM,1,4)||'***'", "").strip(),
+        "hphm": plate,
+        "hphm_mask": plate,
         "clppxh": (row.get("CLPPXH") or "").strip(),
     }
 
 def open_csv_reader(path: pathlib.Path):
-    """Try UTF-8-SIG first, fallback to GB18030 for mixed-encoding files."""
+    """Try UTF-8 first, then GB18030."""
+    # Read a bit to detect
+    with path.open("rb") as f:
+        chunk = f.read(4096)
+    
+    encoding = "utf-8"
     try:
-        f = path.open("r", encoding="utf-8-sig", newline="")
-        return f, csv.DictReader(f)
+        chunk.decode("utf-8")
     except UnicodeDecodeError:
-        f = path.open("r", encoding="gb18030", errors="ignore", newline="")
-        return f, csv.DictReader(f)
+        encoding = "gb18030"
+        
+    f = path.open("r", encoding=encoding, errors="replace", newline="")
+    return f, csv.DictReader(f)
 
 
 def produce_file(producer, topic, path: pathlib.Path, chunk_size: int, pause_sec: float, max_total: int | None = None):
