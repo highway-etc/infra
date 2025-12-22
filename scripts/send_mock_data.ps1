@@ -7,10 +7,11 @@ Param(
 )
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$PSDefaultParameterValues['Import-Csv:Encoding'] = 'UTF8'
 
 Write-Host 'Sending $N real records from $DataDir to Kafka, broker=$Broker, topic=$Topic ...'
 
-# Æô¶¯ kafka-console-producer ½ø³Ì
+# ï¿½ï¿½ï¿½ï¿½ kafka-console-producer ï¿½ï¿½ï¿½ï¿½
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = 'docker'
 $psi.ArgumentList.Add('exec')
@@ -22,6 +23,8 @@ $psi.ArgumentList.Add('kafka-console-producer --bootstrap-server "' + $Broker + 
 $psi.RedirectStandardInput = $true
 $psi.RedirectStandardError = $true
 $psi.UseShellExecute = $false
+
+$psi.StandardInputEncoding = [System.Text.Encoding]::UTF8
 
 $p = [System.Diagnostics.Process]::Start($psi)
 $stdin = $p.StandardInput

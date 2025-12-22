@@ -1,4 +1,4 @@
-import argparse, csv, datetime as dt, json, pathlib, zlib, time
+import argparse, csv, datetime as dt, json, pathlib, zlib, time, random
 from kafka import KafkaProducer
 
 # 行政区划简单映射，可按需补充
@@ -36,6 +36,34 @@ def station_id_from_kkmc(kkmc: str) -> int:
     if not kkmc:
         return 0
     return (zlib.crc32(kkmc.encode("utf-8")) & 0x7fffffff) % 1000000  # 稳定正整数
+
+HPZL_MAP = {
+    "01": "大型汽车",
+    "02": "小型汽车",
+    "03": "使馆汽车",
+    "04": "领馆汽车",
+    "05": "境外汽车",
+    "06": "外籍汽车",
+    "07": "普通摩托车",
+    "08": "轻便摩托车",
+    "16": "教练汽车",
+    "20": "公交客车",
+    "21": "出租客运",
+    "22": "旅游客车",
+    "23": "警用车辆",
+    "24": "消防车辆",
+    "25": "救护车辆",
+    "26": "工程救险",
+    "31": "武警车辆",
+    "32": "军队车辆",
+    "51": "大功率摩托",
+    "52": "新能源小型",
+    "53": "新能源大型",
+    "54": "新能源货车",
+    "1": "小型汽车",
+    "2": "大型汽车"
+}
+
 
 def normalize_row(row: dict):
     # Robustly find columns
@@ -76,6 +104,19 @@ def normalize_row(row: dict):
     sid = station_id_from_kkmc(kkmc)
     if sid <= 0:
         return None
+
+    # Normalize direction to IN/OUT with some diversity
+    dir_upper = (fxlx or "").upper()
+    if "入" in fxlx or "IN" in dir_upper:
+        direction = "IN"
+    elif "出" in fxlx or "OUT" in dir_upper:
+        direction = "OUT"
+    else:
+        direction = random.choice(["IN", "OUT"])
+
+    hpzl_code = hpzl.zfill(2) if hpzl.isdigit() and len(hpzl) < 2 else hpzl
+    hpzl_name = HPZL_MAP.get(hpzl_code, HPZL_MAP.get(hpzl, hpzl or "未知车型"))
+    model = clppxh or hpzl_name
             
     return {
         "gcxh": int(gcxh_val),
@@ -83,27 +124,29 @@ def normalize_row(row: dict):
         "adcode": ADCODE_MAP.get(xzqh, 0),
         "kkmc": kkmc,
         "station_id": sid,
-        "fxlx": fxlx,
+        "fxlx": direction,
         "gcsj": gcsj_iso,
-        "hpzl": hpzl,
+        "hpzl": hpzl_code,
         "hphm": plate,
         "hphm_mask": plate,
-        "clppxh": clppxh,
+        "clppxh": model,
+        "vehicle_type": hpzl_name,
+        "hpzl_name": hpzl_name,
     }
 
 def open_csv_reader(path: pathlib.Path):
-    """Try UTF-8 first, then GB18030."""
-    # Read a bit to detect
-    with path.open("rb") as f:
-        chunk = f.read(4096)
-    
-    encoding = "utf-8"
+    """优先用 UTF-8 读取，失败再回退 GB18030，避免截断探测导致误判."""
     try:
-        chunk.decode("utf-8")
+        f = path.open("r", encoding="utf-8", errors="strict", newline="")
+        # 读一点校验编码，再回到起始位置
+        f.read(1)
+        f.seek(0)
     except UnicodeDecodeError:
-        encoding = "gb18030"
-        
-    f = path.open("r", encoding=encoding, errors="replace", newline="")
+        try:
+            f.close()
+        except Exception:
+            pass
+        f = path.open("r", encoding="gb18030", errors="replace", newline="")
     return f, csv.DictReader(f)
 
 

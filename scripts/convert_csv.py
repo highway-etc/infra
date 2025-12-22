@@ -1,6 +1,10 @@
 import os
 import pathlib
-import pandas as pd
+
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 
 def convert_to_utf8(file_path):
     """Ensure existing CSV files are UTF-8 encoded."""
@@ -31,6 +35,9 @@ def convert_to_utf8(file_path):
 
 def convert_xlsx_to_csv(xlsx_path):
     """Convert XLSX to CSV with UTF-8 encoding."""
+    if pd is None:
+        print(f"pandas not installed, skip converting {xlsx_path.name}; install pandas to enable XLSX conversion")
+        return
     try:
         csv_path = xlsx_path.with_suffix('.csv')
         if csv_path.exists():
