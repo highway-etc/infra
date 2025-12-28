@@ -1,0 +1,83 @@
+flowchart TB
+    %% ================= 样式定义 =================
+    %% 核心色板：科技蓝、数据紫、活力橙、中性灰
+    classDef base fill:#f9f9f9,stroke:#333,stroke-width:1px,color:#333;
+    classDef source fill:#e1f5fe,stroke:#0277bd,stroke-width:2px,color:#01579b,rx:10,ry:10;
+    classDef mq fill:#e0f2f1,stroke:#00695c,stroke-width:2px,color:#004d40,stroke-dasharray: 5 5;
+    classDef compute fill:#e8eaf6,stroke:#3f51b5,stroke-width:3px,color:#1a237e;
+    classDef storage fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c;
+    classDef service fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,color:#e65100;
+    classDef front fill:#fff8e1,stroke:#ffb300,stroke-width:4px,color:#ff6f00,rx:5,ry:5,font-size:16px;
+    classDef monitor fill:#eceff1,stroke:#546e7a,stroke-width:1px,stroke-dasharray: 3 3,color:#37474f;
+
+    %% ================= 架构层级 =================
+
+    %% 1. 数据采集源头
+    subgraph Layer_Source ["📡 数据感知与采集层 (Edge Layer)"]
+        direction LR
+        Gen(("\n📊 仿真模拟器\n(Mock Stream)")):::source
+        Gate(("\n🛣️ 龙门架 RSU\n(Real-time)")):::source
+    end
+
+    %% 2. 消息队列缓冲
+    subgraph Layer_MQ ["📨 消息缓冲层 (Message Queue)"]
+        direction TB
+        Kafka[/"Kafka Cluster\nTopic: etc_traffic\n(48 Partitions)"/]:::mq
+    end
+
+    %% 3. 核心计算引擎
+    subgraph Layer_Compute ["⚙️ 实时流计算层 (Flink Engine)"]
+        direction LR
+        TrafficJob["📈 流量统计作业\n(TrafficStreamingJob)"]:::compute
+        PlateClone["🚨 套牌检测算法\n(PlateCloneDetectionJob)"]:::compute
+    end
+
+    %% 4. 分布式存储
+    subgraph Layer_Storage ["💾 分布式存储层 (Data Warehouse)"]
+        direction TB
+        MyCat{{"MyCat 中间件\n(读写分离/分片)"}}:::storage
+        subgraph DB_Cluster [数据分片集群]
+            direction LR
+            MySQL1[("MySQL\nShard 01")]:::storage
+            MySQL2[("MySQL\nShard 02+")]:::storage
+        end
+    end
+
+    %% 5. 业务服务接口
+    subgraph Layer_Service ["🚀 后端服务层 (Spring Boot Microservices)"]
+        direction LR
+        API_Group["🔌 REST API 网关聚合\nDashboard | Traffic | Alert | Revenue"]:::service
+    end
+
+    %% 6. 前端可视化
+    subgraph Layer_Front ["🖥️ 可视化交互层 (React/Vite)"]
+        WebUI["🌍 智慧交通指挥大屏\n(http://82.156.176.100:8088)"]:::front
+    end
+
+    %% 7. 运维监控 (侧边支撑)
+    subgraph Layer_Ops ["🛡️ 可观测性与运维 (Observability)"]
+        direction TB
+        Prom("Prometheus\n(Metrics)"):::monitor
+        Graf("Grafana\n(Visualizing)"):::monitor
+        Scripts>"自动化运维脚本\n(PowerShell/Shell)"]:::monitor
+    end
+
+    %% ================= 逻辑连线 =================
+    
+    %% 主数据流 (加粗实线)
+    Gen & Gate ==> Kafka
+    Kafka ==> TrafficJob & PlateClone
+    TrafficJob & PlateClone ==> MyCat
+    MyCat -.-> MySQL1 & MySQL2
+    MyCat ==> API_Group
+    API_Group ==> WebUI
+
+    %% 监控数据流 (细虚线)
+    Layer_MQ -.-> Prom
+    Layer_Compute -.-> Prom
+    Layer_Storage -.-> Prom
+    Prom -.-> Graf
+
+    %% ================= 布局微调 =================
+    %% 强制运维层在右侧或左侧，不干扰主流程
+    Layer_Source ~~~ Layer_Ops

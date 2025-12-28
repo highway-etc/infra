@@ -9,7 +9,8 @@ Param(
     [switch]$SkipStream,
     [int]$StreamRate = 60,
     [double]$StreamCloneRate = 0.02,
-    [string]$StreamFocusPrefix = 'SU'
+    [string]$StreamFocusPrefix = 'SU',
+    [string]$StreamImage = 'python:3.11-slim'
 )
 
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -116,18 +117,15 @@ try {
     docker run -d --name etc-frontend --network $network -p 8088:80 "etc-frontend:$Tag"
 
     if (-not $SkipStream) {
-        $jobName = 'etc-mock-stream'
-        $existingJob = Get-Job -Name $jobName -ErrorAction SilentlyContinue
-        if ($existingJob) {
-            Stop-Job -Job $existingJob -Force -ErrorAction SilentlyContinue | Out-Null
-            Remove-Job -Job $existingJob -Force -ErrorAction SilentlyContinue | Out-Null
-        }
-        $streamScript = Join-Path $infraDir 'scripts/generate_mock_stream.py'
-        Write-Host "[BlueCat] start continuous mock stream (rate=$StreamRate clone=$StreamCloneRate focus=$StreamFocusPrefix)" -ForegroundColor Yellow
-        Start-Job -Name $jobName -ScriptBlock {
-            param($scriptPath, $bootstrap, $topic, $rate, $clone, $focus)
-            python $scriptPath --bootstrap $bootstrap --topic $topic --rate $rate --clone-rate $clone --focus-prefix $focus
-        } -ArgumentList $streamScript, $kafkaBroker, $kafkaTopic, $StreamRate, $StreamCloneRate, $StreamFocusPrefix | Out-Null
+        $streamContainer = 'etc-mock-stream'
+        $runningStream = docker ps -aq --filter "name=$streamContainer"
+        if ($runningStream) { docker rm -f $streamContainer | Out-Null }
+        $streamCmd = "pip install --no-cache-dir kafka-python && python /app/generate_mock_stream.py --bootstrap $kafkaBroker --topic $kafkaTopic --rate $StreamRate --clone-rate $StreamCloneRate --focus-prefix $StreamFocusPrefix"
+        Write-Host "[BlueCat] start continuous mock stream container (rate=$StreamRate clone=$StreamCloneRate focus=$StreamFocusPrefix)" -ForegroundColor Yellow
+        docker run -d --name $streamContainer --network $network -e TZ=Asia/Shanghai `
+            -v (Join-Path $infraDir 'scripts'):/app `
+            -v (Join-Path $infraDir 'flink/data/test_data'):/data `
+            $StreamImage sh -c $streamCmd | Out-Null
     } else {
         Write-Host "[BlueCat] skip continuous mock stream" -ForegroundColor DarkYellow
     }
